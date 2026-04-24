@@ -1,0 +1,191 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Returns true if the request is from an authenticated user.
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    /// Returns true if the authenticated user's UID matches the given uid.
+    function isUser(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    /// Returns the role from the Firebase Auth custom claims.
+    function userRole() {
+      return request.auth.token.role;
+    }
+
+    /// Returns true if the caller has the specified role.
+    function hasRole(role) {
+      return isAuthenticated() && userRole() == role;
+    }
+
+    /// Returns true if the caller is an Admin or Super Admin.
+    function isAdmin() {
+      return isAuthenticated() &&
+        (userRole() == 'ADMIN' || userRole() == 'SUPER_ADMIN');
+    }
+
+    /// Returns true if the caller is the professional who owns this service.
+    function isServiceOwner(serviceData) {
+      return isAuthenticated() && request.auth.uid == serviceData.professionalId;
+    }
+
+    /// Returns true if the caller is the customer or professional on a booking.
+    function isBookingParticipant(bookingData) {
+      return isAuthenticated() &&
+        (request.auth.uid == bookingData.customerId ||
+         request.auth.uid == bookingData.professionalId);
+    }
+
+    /// Enforces that a field exists and is a non-empty string.
+    function isNonEmptyString(value) {
+      return value is string && value.size() > 0;
+    }
+
+    /// Validates the allowed booking status transitions.
+    function isValidStatusTransition(current, next) {
+      return (current == 'PENDING'   && next in ['ACCEPTED', 'CANCELLED']) ||
+             (current == 'ACCEPTED'  && next in ['STARTED',  'CANCELLED']) ||
+             (current == 'STARTED'   && next in ['COMPLETED','CANCELLED']) ||
+             (current == 'COMPLETED' && false) ||
+             (current == 'CANCELLED' && false);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // /users/{uid}
+    // ═══════════════════════════════════════════════════════════════════════
+    match /users/{uid} {
+
+      // Any authenticated user can see basic public profiles
+      // (needed for professional search result cards).
+      allow read: if isAuthenticated();
+
+      // A user can only create their own document.
+      allow create: if isUser(uid) &&
+                       isNonEmptyString(request.resource.data.displayName) &&
+                       isNonEmptyString(request.resource.data.role) &&
+                       request.resource.data.role in
+                         ['CUSTOMER', 'PROFESSIONAL', 'ADMIN', 'SUPER_ADMIN'];
+
+      // A user can update their own document, but cannot change uid or role.
+      allow update: if isUser(uid) &&
+                       request.resource.data.uid    == resource.data.uid &&
+                       request.resource.data.role   == resource.data.role;
+
+      // Only admins can delete user documents.
+      allow delete: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // /services/{serviceId}
+    // ═══════════════════════════════════════════════════════════════════════
+    match /services/{serviceId} {
+
+      // PUBLIC: anyone (even unauthenticated) can browse service listings.
+      // This enables the discovery flow without forcing sign-in first.
+      allow read: if true;
+
+      // Only authenticated professionals can create a service listing.
+      allow create: if hasRole('PROFESSIONAL') &&
+                       request.auth.uid == request.resource.data.professionalId &&
+                       isNonEmptyString(request.resource.data.category) &&
+                       isNonEmptyString(request.resource.data.title) &&
+                       request.resource.data.price is number &&
+                       request.resource.data.price > 0;
+
+      // The owning professional can update their own listing.
+      // Admins can update for moderation (e.g., de-listing).
+      allow update: if (isServiceOwner(resource.data) &&
+                        // Professional cannot change professionalId on an existing doc
+                        request.resource.data.professionalId == resource.data.professionalId)
+                    || isAdmin();
+
+      // Only admins can hard-delete a service listing.
+      allow delete: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // /bookings/{bookingId}
+    // ═══════════════════════════════════════════════════════════════════════
+    match /bookings/{bookingId} {
+
+      // Only the customer or professional on the booking can read it.
+      allow read: if isBookingParticipant(resource.data) || isAdmin();
+
+      // Only an authenticated customer (role = CUSTOMER) can create a booking.
+      allow create: if hasRole('CUSTOMER') &&
+                       request.auth.uid == request.resource.data.customerId &&
+                       request.resource.data.status == 'PENDING' &&
+                       isNonEmptyString(request.resource.data.professionalId) &&
+                       isNonEmptyString(request.resource.data.serviceId) &&
+                       request.resource.data.agreedPrice is number &&
+                       request.resource.data.agreedPrice > 0;
+
+      // Only participants can update; status must follow the state machine.
+      // The professional can accept/start; the customer can cancel/complete.
+      allow update: if isBookingParticipant(resource.data) &&
+                       // IDs must never change after creation
+                       request.resource.data.customerId      == resource.data.customerId &&
+                       request.resource.data.professionalId  == resource.data.professionalId &&
+                       request.resource.data.serviceId       == resource.data.serviceId &&
+                       // Validate state machine transition
+                       isValidStatusTransition(
+                         resource.data.status,
+                         request.resource.data.status
+                       );
+
+      // Bookings are never deleted — audit trail is essential.
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // /reviews/{reviewId}
+    // ═══════════════════════════════════════════════════════════════════════
+    match /reviews/{reviewId} {
+
+      // Public read — reviews are visible to anyone browsing profiles.
+      allow read: if true;
+
+      // Only an authenticated customer can create a review, and only for
+      // themselves (reviewerId must match their UID).
+      allow create: if isAuthenticated() &&
+                       request.auth.uid == request.resource.data.reviewerId &&
+                       request.resource.data.rating is number &&
+                       request.resource.data.rating >= 1 &&
+                       request.resource.data.rating <= 5 &&
+                       isNonEmptyString(request.resource.data.bookingId);
+
+      // Reviews are immutable after creation.
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // /notifications/{uid}/items/{notificationId}
+    // ═══════════════════════════════════════════════════════════════════════
+    match /notifications/{uid}/items/{notificationId} {
+
+      // A user can only read their own notifications.
+      allow read:   if isUser(uid);
+
+      // Only the backend (Admin SDK) writes notifications — client cannot create.
+      allow create: if false;
+
+      // User can mark their own notification as read.
+      allow update: if isUser(uid) &&
+                       request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['read']);
+
+      allow delete: if isUser(uid);
+    }
+
+  } // end /databases/{database}/documents
+}

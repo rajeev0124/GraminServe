@@ -1,0 +1,124 @@
+{
+  "rules": {
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // /chats/{booking_id}
+    //
+    // Structure:
+    //   /chats/{booking_id}/participants/{uid}  → true
+    //   /chats/{booking_id}/messages/{msg_id}   → ChatMessage object
+    //
+    // Access: only UIDs listed under /participants can read or write.
+    // The participant list is written once by the NestJS Admin SDK when
+    // a booking is created — clients can never modify it directly.
+    // ═══════════════════════════════════════════════════════════════════════
+    "chats": {
+      "$booking_id": {
+
+        // ── participants (written by Admin SDK only) ────────────────────────
+        "participants": {
+
+          // Any listed participant may read the participant map
+          // (needed so the client can verify its own membership).
+          ".read": "auth != null && data.child(auth.uid).exists()",
+
+          // Clients can never write to the participants node —
+          // it is exclusively managed by the NestJS backend via Admin SDK.
+          ".write": false,
+
+          "$uid": {
+            ".validate": "newData.isBoolean() && newData.val() == true"
+          }
+        },
+
+        // ── messages ──────────────────────────────────────────────────────
+        "messages": {
+
+          // Read: only a participant of this booking may read messages.
+          ".read": "auth != null && root.child('chats').child($booking_id).child('participants').child(auth.uid).exists()",
+
+          // Write: only a participant may push new messages.
+          ".write": "auth != null && root.child('chats').child($booking_id).child('participants').child(auth.uid).exists()",
+
+          "$message_id": {
+
+            // Validate the shape of every message node.
+            ".validate": "newData.hasChildren(['senderUid', 'timestamp', 'read'])",
+
+            "senderUid": {
+              // The senderUid must match the authenticated user —
+              // a participant cannot impersonate the other party.
+              ".validate": "newData.isString() && newData.val() == auth.uid"
+            },
+            "text": {
+              ".validate": "newData.isString() && newData.val().length <= 2000"
+            },
+            "imageUrl": {
+              ".validate": "newData.isString() || newData.val() == null"
+            },
+            "timestamp": {
+              // Must be a valid server timestamp (number).
+              ".validate": "newData.isNumber()"
+            },
+            "read": {
+              ".validate": "newData.isBoolean()"
+            },
+
+            // Disallow any extra fields not listed above.
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+
+        // Prevent any other child nodes under a booking chat.
+        "$other": {
+          ".read":     false,
+          ".write":    false,
+          ".validate": false
+        }
+      }
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // /presence/{uid}
+    //
+    // Stores online/offline state for each user.
+    // Each user can only read and write their own presence node.
+    // Other authenticated users can read any presence node (to show
+    // the "Online" indicator in the chat UI).
+    // ═══════════════════════════════════════════════════════════════════════
+    "presence": {
+      "$uid": {
+
+        // Any authenticated user can see another user's presence status.
+        ".read": "auth != null",
+
+        // Only the user themselves can update their own presence.
+        ".write": "auth != null && auth.uid == $uid",
+
+        ".validate": "newData.hasChildren(['online', 'lastSeen'])",
+
+        "online": {
+          ".validate": "newData.isBoolean()"
+        },
+        "lastSeen": {
+          ".validate": "newData.isNumber()"
+        },
+
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Root catch-all — deny everything not explicitly addressed above.
+    // ═══════════════════════════════════════════════════════════════════════
+    "$other": {
+      ".read":  false,
+      ".write": false
+    }
+
+  }
+}

@@ -1,0 +1,84 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ─── Helper functions ──────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isUser(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.role == 'ADMIN' ||
+         request.auth.token.role == 'SUPER_ADMIN');
+    }
+
+    function isImageFile() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isUnder5MB() {
+      return request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // ─── /id-documents/{uid}/{fileName} ────────────────────────────────────
+    // Government ID uploads for professional verification.
+    // Write: only the professional themselves (once, during onboarding).
+    // Read:  only admins (for the verification review flow).
+    match /id-documents/{uid}/{fileName} {
+      allow read:   if isAdmin();
+      allow write:  if isUser(uid) &&
+                       isImageFile() &&
+                       isUnder5MB();
+      allow delete: if isAdmin();
+    }
+
+    // ─── /portfolios/{professionalUid}/{fileName} ───────────────────────────
+    // "Before vs After" portfolio photos uploaded by professionals.
+    // Read:  public (displayed on the service discovery / profile pages).
+    // Write: only the owning professional.
+    match /portfolios/{professionalUid}/{fileName} {
+      allow read:   if true;
+      allow write:  if isUser(professionalUid) &&
+                       isImageFile() &&
+                       isUnder5MB();
+      allow delete: if isUser(professionalUid) || isAdmin();
+    }
+
+    // ─── /chat-images/{bookingId}/{fileName} ────────────────────────────────
+    // Images shared inside a booking chat room.
+    // Read/Write: authenticated users only (participant check is
+    //             enforced on the client via RTDB rules for the message node).
+    match /chat-images/{bookingId}/{fileName} {
+      allow read:   if isAuthenticated();
+      allow write:  if isAuthenticated() &&
+                       isImageFile() &&
+                       isUnder5MB();
+      allow delete: if isAdmin();
+    }
+
+    // ─── /avatars/{uid}/{fileName} ─────────────────────────────────────────
+    // User profile photo / avatar.
+    // Read: public.  Write: only the user themselves.
+    match /avatars/{uid}/{fileName} {
+      allow read:   if true;
+      allow write:  if isUser(uid) &&
+                       isImageFile() &&
+                       request.resource.size < 2 * 1024 * 1024; // 2 MB cap for avatars
+      allow delete: if isUser(uid) || isAdmin();
+    }
+
+    // ─── Catch-all: deny everything else ─────────────────────────────────────
+    match /{allPaths=**} {
+      allow read:   if false;
+      allow write:  if false;
+    }
+
+  }
+}

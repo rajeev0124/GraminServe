@@ -1,0 +1,59 @@
+# Operation 1: List Service Categories
+# Allows any user to browse available service categories.
+query ListAllServiceCategories @auth(level: PUBLIC, insecureReason: "This operation is safe to expose to the public as it only retrieves public service category information.") {
+  serviceCategories {
+    id
+    name
+    description
+  }
+}
+
+# Operation 2: Create a Service Request
+# Allows an authenticated user to create a new service request,
+# automatically linking it to their user ID.
+mutation CreateNewServiceRequest($serviceOfferingId: UUID!, $requestDate: Date!, $customerNotes: String) @auth(level: USER) {
+  serviceRequest_insert(data: {
+    customerId_expr: "auth.uid",
+    serviceOfferingId: $serviceOfferingId,
+    requestDate: $requestDate,
+    status: "Pending",
+    customerNotes: $customerNotes,
+    createdAt_expr: "request.time"
+  })
+}
+
+# Operation 3: Get My Service Requests
+# Retrieves all service requests for the currently authenticated user.
+query GetMyServiceRequests @auth(level: USER) {
+  serviceRequests(where: {customerId: {eq_expr: "auth.uid"}}, orderBy: [{createdAt: DESC}]) {
+    id
+    requestDate
+    status
+    customerNotes
+    serviceOffering {
+      name
+      serviceProviderProfile {
+        user {
+          displayName
+        }
+      }
+    }
+  }
+}
+
+# Operation 4: Update Service Provider Profile
+# Allows an authenticated service provider to update their profile.
+# Ensures only the owner can update their own profile using a CEL expression.
+mutation UpdateMyServiceProviderProfile($serviceArea: String, $availability: String, $bio: String, $experienceYears: Int) @auth(expr: "auth.uid == request.resource.userId") {
+  serviceProviderProfile_update(
+    key: {userId_expr: "auth.uid"},
+    data: {
+      serviceArea: $serviceArea,
+      availability: $availability,
+      bio: $bio,
+      experienceYears: $experienceYears
+    }
+  ) {
+    id
+  }
+}

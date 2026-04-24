@@ -1,0 +1,96 @@
+mutation CreateDemoData @transaction @auth(level: USER, insecureReason: "Seed data mutations should typically be restricted to authenticated users for controlled data initialization.") {
+  user_insertMany(data: [
+    {
+      id: "b2d3d4a0-5e12-4f9c-8a1a-0e9f8c7d6b5a",
+      displayName: "Alice Smith",
+      userType: "customer",
+      email: "alice@example.com",
+      phoneNumber: "555-111-2222",
+      address: "123 Main St",
+      photoUrl: "https://example.com/alice.jpg",
+      createdAt: "2023-01-15T10:00:00Z"
+    },
+    {
+      id: "a1c2b3d4-e5f6-7890-1234-567890abcdef",
+      displayName: "Bob Johnson",
+      userType: "service_provider",
+      email: "bob@example.com",
+      phoneNumber: "555-333-4444",
+      address: "456 Oak Ave",
+      photoUrl: "https://example.com/bob.jpg",
+      createdAt: "2023-02-20T11:30:00Z"
+    },
+    {
+      id: "c7d8e9f0-1234-5678-90ab-cdef12345678",
+      displayName: "Charlie Brown",
+      userType: "customer",
+      email: "charlie@example.com",
+      phoneNumber: "555-555-6666",
+      address: "789 Pine Ln",
+      photoUrl: "https://example.com/charlie.jpg",
+      createdAt: "2023-03-01T09:15:00Z"
+    }
+  ])
+  serviceProviderProfile_insertMany(data: [
+    {
+      id: "f9e8d7c6-5b4a-3210-fedc-ba9876543210",
+      userId: "a1c2b3d4-e5f6-7890-1234-567890abcdef",
+      serviceArea: "Downtown City",
+      availability: "Mon-Fri, 9am-5pm",
+      bio: "Experienced plumber with 10 years in the field.",
+      experienceYears: 10,
+      averageRating: 4.8,
+      createdAt: "2023-02-21T10:00:00Z"
+    }
+  ])
+  serviceCategory_insertMany(data: [
+    {
+      id: "d1e2f3a4-b5c6-7890-1234-567890abcde1",
+      name: "Plumbing",
+      description: "Services related to plumbing systems.",
+      createdAt: "2023-01-10T08:00:00Z"
+    },
+    {
+      id: "e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0",
+      name: "Electrical",
+      description: "Services related to electrical systems.",
+      createdAt: "2023-01-10T08:10:00Z"
+    }
+  ])
+  serviceOffering_insertMany(data: [
+    {
+      id: "0a1b2c3d-4e5f-6789-0123-456789abcdef",
+      serviceProviderProfileId: "f9e8d7c6-5b4a-3210-fedc-ba9876543210",
+      serviceCategoryId: "d1e2f3a4-b5c6-7890-1234-567890abcde1",
+      name: "Pipe Repair",
+      description: "Repair of leaky pipes and minor plumbing issues.",
+      price: 75.00,
+      unit: "hour",
+      durationEstimate: "1-2 hours",
+      createdAt: "2023-02-22T09:00:00Z"
+    }
+  ])
+  serviceRequest_insertMany(data: [
+    {
+      id: "1b2c3d4e-5f6a-7890-1234-567890fedcba",
+      customerId: "b2d3d4a0-5e12-4f9c-8a1a-0e9f8c7d6b5a",
+      serviceProviderProfileId: "f9e8d7c6-5b4a-3210-fedc-ba9876543210",
+      serviceOfferingId: "0a1b2c3d-4e5f-6789-0123-456789abcdef",
+      requestDate: "2023-03-05",
+      status: "pending",
+      customerNotes: "Leaky kitchen sink.",
+      createdAt: "2023-03-04T14:00:00Z"
+    }
+  ])
+  review_insertMany(data: [
+    {
+      id: "9f8e7d6c-5b4a-3210-fedc-ba9876543211",
+      serviceRequestId: "1b2c3d4e-5f6a-7890-1234-567890fedcba",
+      customerId: "b2d3d4a0-5e12-4f9c-8a1a-0e9f8c7d6b5a",
+      serviceProviderProfileId: "f9e8d7c6-5b4a-3210-fedc-ba9876543210",
+      rating: 5,
+      comment: "Excellent service! Bob fixed the leak quickly and professionally.",
+      createdAt: "2023-03-06T16:00:00Z"
+    }
+  ])
+}

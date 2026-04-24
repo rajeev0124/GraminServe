@@ -1,0 +1,58 @@
+type User @table {
+  displayName: String!
+  userType: String!
+  createdAt: Timestamp!
+  email: String
+  phoneNumber: String
+  address: String
+  photoUrl: String
+}
+
+type ServiceCategory @table {
+  name: String!
+  createdAt: Timestamp!
+  description: String
+}
+
+type ServiceProviderProfile @table {
+  user: User!
+  serviceArea: String!
+  availability: String!
+  createdAt: Timestamp!
+  bio: String
+  experienceYears: Int
+  averageRating: Float
+}
+
+type ServiceOffering @table {
+  serviceProviderProfile: ServiceProviderProfile!
+  serviceCategory: ServiceCategory!
+  name: String!
+  description: String!
+  price: Float!
+  createdAt: Timestamp!
+  unit: String
+  durationEstimate: String
+}
+
+type ServiceRequest @table {
+  customer: User!
+  serviceProviderProfile: ServiceProviderProfile!
+  serviceOffering: ServiceOffering!
+  requestDate: Date!
+  status: String!
+  createdAt: Timestamp!
+  customerNotes: String
+  scheduledDate: Date
+  scheduledTime: String
+  completionDate: Date
+}
+
+type Review @table {
+  serviceRequest: ServiceRequest!
+  customer: User!
+  serviceProviderProfile: ServiceProviderProfile!
+  rating: Int!
+  createdAt: Timestamp!
+  comment: String
+}
